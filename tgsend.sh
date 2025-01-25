@@ -113,7 +113,7 @@ tg_send() {
     # tg_debug='n' only outputs a compact json summary
     if [[ "$update" = 'update' ]]; then
       # update an existing message_id
-      append_text="[$(date +"%d/%m/%y-%T")]  $message"
+      append_text="$(date +"%d%m%y_%T")  $message"
       tg_type='editMessageText'
       msgchar_count=$(echo $append_text | wc -m)
       # calculate number of 4090 character messages needed to
