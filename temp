@@ -55,7 +55,7 @@ echo "================================"
 
 # Khởi động faucet server ở background
 echo "[$(date '+%H:%M:%S')] Khởi động faucet server..."
-$NULLA_PATH. &
+$NULLA_PATH/nulla-faucet &
 FAUCET_PID=$!
 
 # Đợi server khởi động
