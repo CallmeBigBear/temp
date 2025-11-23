@@ -5,10 +5,13 @@ NULLA_PATH="/home/nulla"  # Đường dẫn chứa các file thực thi
 WALLET_NAME="wallet"
 WALLET_DEST="bob"  # Wallet đích để nhận token
 FAUCET_INTERVAL=10  # Thời gian giữa các lần faucet (giây)
-TRANSFER_AMOUNT=1000  # Số lượng token gửi
+TRANSFER_AMOUNT=100  # Số lượng token gửi
 TRANSFER_INTERVAL_MIN=20  # Thời gian tối thiểu giữa các lần transfer (giây)
 TRANSFER_INTERVAL_MAX=60  # Thời gian tối đa giữa các lần transfer (giây)
 WS="ws://127.0.0.1:9944"
+
+# Chuyển vào thư mục nulla để wallet được tìm thấy
+cd $NULLA_PATH
 
 # Màu sắc cho log
 GREEN='\033[0;32m'
@@ -37,8 +40,8 @@ cleanup() {
 check_balance() {
     local wallet_name=$1
     echo -e "${YELLOW}[$(date '+%H:%M:%S')] 🔍 SCANNING $wallet_name...${NC}"
-    $NULLA_PATH/nulla-wallet scan --name $wallet_name
-    local balance=$($NULLA_PATH/nulla-wallet balance --name $wallet_name | awk '/Total Balance:/ {print $(NF-1)}')
+    ./nulla-wallet scan --name $wallet_name
+    local balance=$(./nulla-wallet balance --name $wallet_name | awk '/Total Balance:/ {print $(NF-1)}')
     echo -e "${GREEN}[BALANCE] $wallet_name: $balance${NC}"
 }
 
@@ -51,16 +54,20 @@ echo "Wallet đích: $WALLET_DEST"
 echo "Faucet interval: ${FAUCET_INTERVAL}s"
 echo "Transfer amount: $TRANSFER_AMOUNT"
 echo "Transfer interval: ${TRANSFER_INTERVAL_MIN}s - ${TRANSFER_INTERVAL_MAX}s (random)"
+echo "WS: $WS"
 echo "================================"
 
 # Khởi động faucet server ở background
 echo "[$(date '+%H:%M:%S')] Khởi động faucet server..."
-$NULLA_PATH/nulla-faucet &
+./nulla-faucet &
 FAUCET_PID=$!
 
 # Đợi server khởi động
-echo "[$(date '+%H:%M:%S')] Đợi server khởi động (3s)..."
-sleep 3
+echo "[$(date '+%H:%M:%S')] Đợi server khởi động (5s)..."
+sleep 5
+
+echo "[$(date '+%H:%M:%S')] Kiểm tra wallet '$WALLET_NAME'..."
+./nulla-wallet address --name $WALLET_NAME
 
 # Đếm số lần faucet và transfer
 faucet_count=0
