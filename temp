@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# ========== CẤU HÌNH ==========
+NULLA_PATH="/home/nulla"  # Đường dẫn chứa các file thực thi
+WALLET_NAME="wallet"
+WALLET_DEST="bob"  # Wallet đích để nhận token
+FAUCET_INTERVAL=10  # Thời gian giữa các lần faucet (giây)
+TRANSFER_AMOUNT=1000  # Số lượng token gửi
+TRANSFER_INTERVAL_MIN=20  # Thời gian tối thiểu giữa các lần transfer (giây)
+TRANSFER_INTERVAL_MAX=60  # Thời gian tối đa giữa các lần transfer (giây)
+WS="ws://127.0.0.1:9944"
+
+# Màu sắc cho log
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+NC='\033[0m' # No Color
+
+# ========== SCRIPT ==========
+export WS=$WS
+
+# Hàm cleanup khi script kết thúc
+cleanup() {
+    echo ""
+    echo "[$(date '+%H:%M:%S')] Đang dừng faucet server..."
+    if [ ! -z "$FAUCET_PID" ]; then
+        kill $FAUCET_PID 2>/dev/null
+        wait $FAUCET_PID 2>/dev/null
+    fi
+    echo "[$(date '+%H:%M:%S')] Đã dừng. Tạm biệt!"
+    exit 0
+}
+
+# Hàm check balance
+check_balance() {
+    local wallet_name=$1
+    echo -e "${YELLOW}[$(date '+%H:%M:%S')] 🔍 SCANNING $wallet_name...${NC}"
+    $NULLA_PATH/nulla-wallet scan --name $wallet_name
+    local balance=$($NULLA_PATH/nulla-wallet balance --name $wallet_name | awk '/Total Balance:/ {print $(NF-1)}')
+    echo -e "${GREEN}[BALANCE] $wallet_name: $balance${NC}"
+}
+
+# Bắt tín hiệu Ctrl+C và tín hiệu kết thúc
+trap cleanup SIGINT SIGTERM
+
+echo "===== BẮT ĐẦU AUTO FAUCET ====="
+echo "Wallet nguồn: $WALLET_NAME"
+echo "Wallet đích: $WALLET_DEST"
+echo "Faucet interval: ${FAUCET_INTERVAL}s"
+echo "Transfer amount: $TRANSFER_AMOUNT"
+echo "Transfer interval: ${TRANSFER_INTERVAL_MIN}s - ${TRANSFER_INTERVAL_MAX}s (random)"
+echo "================================"
+
+# Khởi động faucet server ở background
+echo "[$(date '+%H:%M:%S')] Khởi động faucet server..."
+$NULLA_PATH. &
+FAUCET_PID=$!
+
+# Đợi server khởi động
+echo "[$(date '+%H:%M:%S')] Đợi server khởi động (3s)..."
+sleep 3
+
+# Đếm số lần faucet và transfer
+faucet_count=0
+transfer_count=0
+last_transfer=0
+next_transfer_interval=$((TRANSFER_INTERVAL_MIN + RANDOM % (TRANSFER_INTERVAL_MAX - TRANSFER_INTERVAL_MIN + 1)))
+
+while true; do
+    # Faucet token
+    echo -e "\n================================\n"
+    echo -e "${CYAN}[$(date '+%H:%M:%S')] 💧 FAUCET lần thứ $((faucet_count + 1))...${NC}"
+    $NULLA_PATH/nulla-wallet faucet --name $WALLET_NAME
+    echo -e "\n================================\n"
+    
+    faucet_count=$((faucet_count + 1))
+    
+    # Kiểm tra xem đã đến lúc transfer chưa
+    if [ $((faucet_count * FAUCET_INTERVAL)) -ge $((last_transfer + next_transfer_interval)) ]; then
+        echo -e "${BLUE}[$(date '+%H:%M:%S')] ⏰ Đã đến lúc transfer (sau ${next_transfer_interval}s)${NC}"
+        echo -e "\n================================\n"
+        # Scan wallet nguồn trước khi transfer
+        echo -e "${YELLOW}[$(date '+%H:%M:%S')] 🔍 SCANNING $WALLET_NAME trước khi transfer...${NC}"
+        $NULLA_PATH/nulla-wallet scan --name $WALLET_NAME
+        echo -e "\n================================\n"
+        
+        # Lấy address của wallet đích (bob)
+        echo -e "${BLUE}[$(date '+%H:%M:%S')] 📍 Lấy address của wallet $WALLET_DEST...${NC}"
+        ADDRESS=$($NULLA_PATH/nulla-wallet address --name $WALLET_DEST | awk '/Stealth Address:/ {print $NF}')
+        echo -e "\n================================\n"
+        
+        # Transfer token từ wallet nguồn sang wallet đích
+        echo -e "${MAGENTA}[$(date '+%H:%M:%S')] 💸 TRANSFER lần thứ $((transfer_count + 1)) từ $WALLET_NAME -> $WALLET_DEST - Amount: $TRANSFER_AMOUNT...${NC}"
+        $NULLA_PATH/nulla-wallet transfer --name $WALLET_NAME --to "$ADDRESS" --amount $TRANSFER_AMOUNT
+        echo -e "\n================================\n"
+        
+        # Scan wallet đích trước khi transfer ngược
+        echo -e "${YELLOW}[$(date '+%H:%M:%S')] 🔍 SCANNING $WALLET_DEST trước khi transfer ngược...${NC}"
+        $NULLA_PATH/nulla-wallet scan --name $WALLET_DEST
+        echo -e "\n================================\n"
+        
+        # Transfer ngược lại 1 nửa từ wallet đích về wallet nguồn
+        RETURN_AMOUNT=$((TRANSFER_AMOUNT / 2))
+        echo -e "${BLUE}[$(date '+%H:%M:%S')] 📍 Lấy address của wallet $WALLET_NAME...${NC}"
+        ADDRESS_RETURN=$($NULLA_PATH/nulla-wallet address --name $WALLET_NAME | awk '/Stealth Address:/ {print $NF}')
+        echo -e "\n================================\n"
+        
+        echo -e "${MAGENTA}[$(date '+%H:%M:%S')] 💸 TRANSFER NGƯỢC từ $WALLET_DEST -> $WALLET_NAME - Amount: $RETURN_AMOUNT...${NC}"
+        $NULLA_PATH/nulla-wallet transfer --name $WALLET_DEST --to "$ADDRESS_RETURN" --amount $RETURN_AMOUNT
+        echo -e "\n================================\n"
+        
+        transfer_count=$((transfer_count + 1))
+        last_transfer=$((faucet_count * FAUCET_INTERVAL))
+        
+        # Random thời gian cho lần transfer tiếp theo
+        next_transfer_interval=$((TRANSFER_INTERVAL_MIN + RANDOM % (TRANSFER_INTERVAL_MAX - TRANSFER_INTERVAL_MIN + 1)))
+        echo -e "${BLUE}[$(date '+%H:%M:%S')] 🎲 Transfer tiếp theo sau: ${next_transfer_interval}s${NC}"
+        echo -e "\n================================\n"
+        
+        # Check balance sau khi hoàn tất cả 2 chiều transfer
+        check_balance $WALLET_NAME
+        check_balance $WALLET_DEST
+        
+        echo -e "\n================================\n"
+    fi
+    
+    # Chờ trước khi faucet lần tiếp theo
+    echo -e "${BLUE}[$(date '+%H:%M:%S')] ⏳ Chờ ${FAUCET_INTERVAL}s...${NC}"
+    sleep $FAUCET_INTERVAL
+done
